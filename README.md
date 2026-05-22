@@ -1,8 +1,8 @@
-<h1 align="center">Discord Tauri — kernoeb fork</h1>
+<h1 align="center">Discord Tauri</h1>
 
 <p align="center">
     A native-feeling Discord wrapper built on <a href="https://github.com/tauri-apps/tao">tao</a>, <a href="https://github.com/tauri-apps/wry">wry</a>, <a href="https://github.com/tauri-apps/tray-icon">tray-icon</a> and <a href="https://github.com/tauri-apps/muda">muda</a>.<br>
-    Fork of <a href="https://github.com/eye-wave/discord-tauri">eye-wave/discord-tauri</a>, focused on a polished macOS experience.
+    Fork of <a href="https://github.com/DiscordTauri/discord-tauri">DiscordTauri/discord-tauri</a>.
 </p>
 
 ---
@@ -25,14 +25,14 @@
 
 ## Stack
 
-| Component   | Crate                                                              |
-| ----------- | ------------------------------------------------------------------ |
-| Window      | [`tao`](https://github.com/tauri-apps/tao) 0.35                    |
-| Web view    | [`wry`](https://github.com/tauri-apps/wry) 0.55                    |
-| Tray        | [`tray-icon`](https://github.com/tauri-apps/tray-icon) 0.24        |
-| Menus       | [`muda`](https://github.com/tauri-apps/muda) 0.19                  |
-| Image       | [`image`](https://github.com/image-rs/image) 0.25                  |
-| macOS API   | [`objc2`](https://github.com/madsmtm/objc2) + `objc2-app-kit` etc. |
+| Component | Crate                                                              |
+| --------- | ------------------------------------------------------------------ |
+| Window    | [`tao`](https://github.com/tauri-apps/tao) 0.35                    |
+| Web view  | [`wry`](https://github.com/tauri-apps/wry) 0.55                    |
+| Tray      | [`tray-icon`](https://github.com/tauri-apps/tray-icon) 0.24        |
+| Menus     | [`muda`](https://github.com/tauri-apps/muda) 0.19                  |
+| Image     | [`image`](https://github.com/image-rs/image) 0.25                  |
+| macOS API | [`objc2`](https://github.com/madsmtm/objc2) + `objc2-app-kit` etc. |
 
 The Tauri framework itself is not used — only its lower-level building blocks.
 
@@ -69,13 +69,13 @@ The webview defaults to the Wayland GDK backend (`GDK_BACKEND=wayland`).
 
 ## Configuration & data locations (macOS)
 
-| Path                                                  | What lives there                                         |
-| ----------------------------------------------------- | -------------------------------------------------------- |
-| `~/Library/Caches/discord.tauri/WebKit/NetworkCache`  | HTTP cache (Cache-Control / ETag), like Safari           |
-| `~/Library/Caches/discord.tauri/WebKit/CacheStorage`  | Service-worker Cache API                                 |
-| `~/Library/WebKit/discord.tauri/WebsiteData/Default`  | cookies                                                  |
-| `~/Library/WebKit/discord.tauri/WebsiteData/LocalStorage` | localStorage                                         |
-| `~/Library/WebKit/discord.tauri/WebsiteData/IndexedDB`    | IndexedDB                                            |
+| Path                                                      | What lives there                               |
+| --------------------------------------------------------- | ---------------------------------------------- |
+| `~/Library/Caches/discord.tauri/WebKit/NetworkCache`      | HTTP cache (Cache-Control / ETag), like Safari |
+| `~/Library/Caches/discord.tauri/WebKit/CacheStorage`      | Service-worker Cache API                       |
+| `~/Library/WebKit/discord.tauri/WebsiteData/Default`      | cookies                                        |
+| `~/Library/WebKit/discord.tauri/WebsiteData/LocalStorage` | localStorage                                   |
+| `~/Library/WebKit/discord.tauri/WebsiteData/IndexedDB`    | IndexedDB                                      |
 
 Persistence is enabled by default (wry uses `WKWebsiteDataStore::defaultDataStore`); the WebView is **not** in incognito mode.
 
@@ -100,4 +100,4 @@ Wrapping the Discord web client is technically a violation of Discord's Terms of
 
 ## License
 
-GPLv3, inherited from upstream. Original authors: `DrPuc`, `eyewave`. macOS work in this fork by [`kernoeb`](https://github.com/kernoeb).
+GPLv3, inherited from upstream. Original authors: `DrPuc`, `eyewave`, `kernoeb`.
