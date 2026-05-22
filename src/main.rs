@@ -1,24 +1,25 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+cfg_if::cfg_if! {
+    if #[cfg(target_os = "macos")] {
+        use muda::{PredefinedMenuItem, Submenu};
+        use tao::{
+            event::StartCause,
+            dpi::LogicalPosition,
+            platform::macos::WindowBuilderExtMacOS,
+        };
+    } else if #[cfg(target_os = "linux")] {
+        use tao::platform::unix::WindowExtUnix;
+        use wry::WebViewBuilderExtUnix;
+    }
+}
+
 use muda::{Menu, MenuEvent, MenuItem};
-#[cfg(target_os = "macos")]
-use muda::{PredefinedMenuItem, Submenu};
-#[cfg(target_os = "macos")]
-use tao::event::StartCause;
-use tao::{
-    event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoopBuilder},
-    window::WindowBuilder,
-};
+use tao::event::{Event, WindowEvent};
+use tao::event_loop::{ControlFlow, EventLoopBuilder};
+use tao::window::WindowBuilder;
 use tray_icon::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-
-#[cfg(target_os = "linux")]
-use tao::platform::unix::WindowExtUnix;
-#[cfg(target_os = "linux")]
-use wry::WebViewBuilderExtUnix;
-
-#[cfg(target_os = "macos")]
-use tao::{dpi::LogicalPosition, platform::macos::WindowBuilderExtMacOS};
+use wry::WebViewBuilder;
 
 #[derive(Debug, Clone, Copy)]
 enum UserEvent {
@@ -34,144 +35,17 @@ enum BadgeState {
     Count(u32),
 }
 
-const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15";
-
-// Paints html/body dark before Discord's own CSS loads, killing the white flash
-// during navigation. Runs at document_start on every page.
-const DARK_BACKGROUND_SCRIPT: &str = r#"
-(function () {
-  const css = 'html,body{background-color:#000 !important;color-scheme:dark}';
-  const inject = () => {
-    const style = document.createElement('style');
-    style.textContent = css;
-    (document.head || document.documentElement).appendChild(style);
-  };
-  if (document.documentElement) inject();
-  else document.addEventListener('readystatechange', inject, { once: true });
-})();
-"#;
-
-// Blocks Discord analytics (/science, /track) and Sentry crash reports.
-// Stays well within what consumer adblockers do on the web client.
-const TRACKING_BLOCKER_SCRIPT: &str = r#"
-(function () {
-  const BLOCK_PATTERNS = [
-    /\/api\/v\d+\/science\b/,
-    /\/api\/v\d+\/track\b/,
-    /sentry\.io/,
-    /sentry\.discord\.com/,
-    /crash\.discord\.com/,
-  ];
-
-  const isBlocked = (url) => {
-    try { return BLOCK_PATTERNS.some((re) => re.test(String(url))); }
-    catch (_) { return false; }
-  };
-
-  const origFetch = window.fetch;
-  window.fetch = function (input, init) {
-    const url = typeof input === 'string' ? input : (input && input.url) || '';
-    if (isBlocked(url)) {
-      return Promise.resolve(new Response(null, { status: 204, statusText: 'No Content' }));
+const fn user_agent() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15"
+    } else if cfg!(target_os = "linux") {
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.3"
+    } else {
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Trailer/93.3.8652.5"
     }
-    return origFetch.call(this, input, init);
-  };
+}
 
-  const origOpen = XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open = function (method, url, ...rest) {
-    this.__dt_blocked = isBlocked(url);
-    return origOpen.call(this, method, url, ...rest);
-  };
-
-  const origSend = XMLHttpRequest.prototype.send;
-  XMLHttpRequest.prototype.send = function (body) {
-    if (this.__dt_blocked) {
-      Object.defineProperty(this, 'readyState', { value: 4, configurable: true });
-      Object.defineProperty(this, 'status', { value: 204, configurable: true });
-      Object.defineProperty(this, 'responseText', { value: '', configurable: true });
-      setTimeout(() => {
-        this.dispatchEvent(new Event('readystatechange'));
-        this.dispatchEvent(new Event('load'));
-        this.dispatchEvent(new Event('loadend'));
-      }, 0);
-      return;
-    }
-    return origSend.call(this, body);
-  };
-
-  if (navigator.sendBeacon) {
-    const origBeacon = navigator.sendBeacon.bind(navigator);
-    navigator.sendBeacon = function (url, data) {
-      if (isBlocked(url)) return true;
-      return origBeacon(url, data);
-    };
-  }
-})();
-"#;
-
-// Watches document.title for Discord's unread/mention markers and forwards the
-// state to native code so the tray icon and dock tile can display a badge.
-//   "(N) ..."  -> N unread, "badge:N"
-//   "• ..."    -> mentions without a count, "badge:dot"
-//   otherwise  -> "badge:0"
-const BADGE_OBSERVER_SCRIPT: &str = r#"
-(function () {
-  let last = null;
-  const send = () => {
-    const t = document.title || '';
-    const m = t.match(/^\((\d+)\)/);
-    const next = m ? ('badge:' + m[1]) : (/^•/.test(t) ? 'badge:dot' : 'badge:0');
-    if (next === last) return;
-    last = next;
-    if (window.ipc && window.ipc.postMessage) window.ipc.postMessage(next);
-  };
-  // Title element appears mid-parse on Discord; wait for it before observing.
-  const attach = () => {
-    const t = document.querySelector('title');
-    if (!t) return false;
-    new MutationObserver(send).observe(t, { childList: true, characterData: true, subtree: true });
-    send();
-    return true;
-  };
-  if (!attach()) {
-    const waiter = new MutationObserver(() => { if (attach()) waiter.disconnect(); });
-    waiter.observe(document.documentElement, { childList: true, subtree: true });
-  }
-})();
-"#;
-
-#[cfg(target_os = "macos")]
-const DRAG_REGION_SCRIPT: &str = r#"
-(function () {
-  const TOP_HEIGHT = 32;
-  const TRAFFIC_LIGHT_WIDTH = 80;
-
-  const style = document.createElement('style');
-  style.textContent = `
-    html.discord-tauri-drag-hover, html.discord-tauri-drag-hover * { cursor: grab !important; }
-    html.discord-tauri-dragging, html.discord-tauri-dragging * { cursor: grabbing !important; }
-  `;
-  (document.head || document.documentElement).appendChild(style);
-
-  const root = document.documentElement;
-  const inZone = (e) => e.clientY < TOP_HEIGHT && e.clientX > TRAFFIC_LIGHT_WIDTH;
-
-  document.addEventListener('mousemove', (e) => {
-    root.classList.toggle('discord-tauri-drag-hover', inZone(e));
-  }, true);
-
-  document.addEventListener('mousedown', (e) => {
-    if (e.button === 0 && inZone(e) && window.ipc && window.ipc.postMessage) {
-      root.classList.add('discord-tauri-dragging');
-      window.ipc.postMessage('drag');
-    }
-  }, true);
-
-  const clearDragging = () => root.classList.remove('discord-tauri-dragging');
-  document.addEventListener('mouseup', clearDragging, true);
-  window.addEventListener('blur', clearDragging);
-})();
-"#;
+const INIT_SCRIPT: &str = include_str!("../target/scripts.js");
 
 fn main() -> wry::Result<()> {
     #[cfg(target_os = "linux")]
@@ -255,13 +129,11 @@ fn main() -> wry::Result<()> {
 
     let webview_builder = WebViewBuilder::new()
         .with_html(html)
-        .with_user_agent(USER_AGENT)
+        .with_user_agent(user_agent())
         .with_autoplay(true)
         .with_devtools(cfg!(debug_assertions))
         .with_background_color((0, 0, 0, 255))
-        .with_initialization_script(DARK_BACKGROUND_SCRIPT)
-        .with_initialization_script(TRACKING_BLOCKER_SCRIPT)
-        .with_initialization_script(BADGE_OBSERVER_SCRIPT)
+        .with_initialization_script(INIT_SCRIPT)
         .with_on_page_load_handler(on_page_load)
         .with_ipc_handler(ipc_handler);
 

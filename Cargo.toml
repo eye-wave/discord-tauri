@@ -17,11 +17,12 @@ identifier = "discord.tauri"
 icon = ["icons/icon.ico", "icons/icon.icns"]
 
 [dependencies]
+cfg-if = "1"
 image = { version = "0.25.10", default-features = false, features = [
   "ico",
   "png",
 ] }
-muda = "0.19.1"
+muda = "0.19"
 tao = { version = "0.35.2" }
 tray-icon = "0.24.0"
 wry = { version = "0.55.1", features = ["devtools", "fullscreen"] }
@@ -47,6 +48,11 @@ objc2-quartz-core = { version = "0.3", features = [
   "CALayer",
   "objc2-core-graphics",
 ] }
+
+[build-dependencies]
+minify-js = "0.6.0"
+swc = "64.0.1"
+swc_common = "21.0.2"
 
 [profile.release]
 codegen-units = 1
